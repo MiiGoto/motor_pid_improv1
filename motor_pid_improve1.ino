@@ -123,7 +123,7 @@ void loop(void)
   float vx=map(testch[3], 364,1684,-200,200);
   float vy=map(testch[2], 364,1684,-200,200);
   float vt=(float)map(testch[0], 364,1684,500,-500)/1000;//ここが目標速度、この場合は前進方向に1m/s
-  float L=825.735308;
+  float L=0.825735308;
   u[0]=mps2rpm(sinphi*vx+cosphi*vy-L*vt); //右前
   u[1]=mps2rpm(sinphi*vx-cosphi*vy-L*vt); //右後
   u[2]=mps2rpm(-sinphi*vx-cosphi*vy-L*vt);//左後
