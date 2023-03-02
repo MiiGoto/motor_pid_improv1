@@ -1,7 +1,7 @@
 #include <MsTimer2.h>
 #include <FlexCAN.h>
 #include "PID.h"
-
+#include <kinetis_flexcan.h>
 
 typedef struct
 {
@@ -9,9 +9,12 @@ typedef struct
   int16_t denryu;
 } wheelEscDataSt;
 
+int led = 13;
 FlexCAN CANTransmitter(1000000);
 static CAN_message_t rxmsg;//can受信用buf
-CAN_message_t msg;//can送信用buf
+static CAN_message_t msg;//can送信用buf
+static CAN_message_t msg1;
+static int fireflag = 0, prefireflag = 0;
 wheelEscDataSt wEscData[4];//can受信用
 
 Pid pid0;
@@ -38,6 +41,9 @@ void setup(void)
   Serial.begin(115200);
     Serial1.begin(100000, SERIAL_8E1);
   
+  MsTimer2::set(2, timerInt);
+  MsTimer2::start();
+
   pinMode(13,OUTPUT);
   digitalWrite(13,HIGH);
   delay(2000);
@@ -59,13 +65,16 @@ void setup(void)
 
 }
 int cnt=0;
+static int yawraw, yaw, pitchraw, pitch;
 static unsigned long testch[6];
 int flag=0;
+
 void loop(void)
 {
   static int data[18];
   static int dataNumber = 0;
   static unsigned long lastConnectTime = 0;
+
   if (Serial1.available() > 0) {
     flag=1;
     digitalWrite(13,!digitalRead(13));
@@ -177,6 +186,41 @@ void loop(void)
   char motor = 5; //-15~15
   
   msg.buf[0] = servo+syl1*2+syl2*4+(motor>0)*8+abs(motor)>16;
+
+  int val = 1050;
+  static int preyaw = 5250, prepitch = 6985;
+  int yawin = 4000;
+  float yawout, pitchout;
+  int limitSpeed = 0;
+  //0以下は0に100以上は100に
+  //走行用モータ制限速度:-16,384～0～16,384(0xC000～0x4000)
+  limitSpeed = 16384;
+  //0~100を0~16384に変換
+  //Serial.print("Sending: ");
+  int roll = 0;
+  testch[4] = (data[5] & 0xC0) >> 6;
+  testch[5] = (data[5] & 0x30) >> 4;
+  if (testch[4] == 3) roll = 0;
+  else if (testch[4] == 1) roll = 1;
+  else if (testch[4] == 2) roll = -1;
+
+  msg1.id = 0x1FF;
+  msg1.len = 8;
+  yaw = yawraw;
+  prepitch = pitch;
+  preyaw = yaw;
+  Serial.print(yawraw);
+  Serial.print(",");
+  Serial.println(/*yawraw*/ yawin);
+  yawout = yawPID(yawin, yaw);
+  //Serial.println(yawout);
+  u[0] = yawout;
+  for (int i = 0; i < msg1.len; i++) {
+    u[i] = max(-16384, min(16384, u[i]));
+    msg1.buf[i * 2] = u[i] >> 8;
+    msg1.buf[i * 2 + 1] = u[i] & 0x00FF;
+  }
+  delay(50);
 }
 
 void timerInt() {
@@ -193,6 +237,34 @@ void timerInt() {
     if (rxmsg.id == 0x204) {
       pid3.now_value(rxmsg.buf[2] * 256 + rxmsg.buf[3]);
     }
+    if (rxmsg.id == 0x205) {
+      yawraw = rxmsg.buf[0] * 256 + rxmsg.buf[1];
+    }
+    if (rxmsg.id == 0x206) {
+      pitchraw = rxmsg.buf[0] * 256 + rxmsg.buf[1];
+    }
      }
   if(flag)CANTransmitter.write(msg);
+}
+
+int pitchPID(int pitchCommand, int pitchValue) {
+  const float pgain[3] = { 50, 0, 0 };
+  static float pIe, prepPe;
+  float pPe = pitchCommand - pitchValue;
+  pIe += pPe;
+  float pDe = pPe - prepPe;
+  prepPe = pPe;
+  return pgain[0] * pPe + pgain[1] * pIe + pgain[2] * pDe;
+}
+
+int yawPID(int yawCommand, int yawValue) {
+  const float ygain[3] = { 9, 0, 0 };
+  static float yIe, preyPe;
+  float yPe = yawCommand - yawValue;
+  if(yPe>4096)yPe=yPe-8192;
+  if(yPe<-4096)yPe=yPe+8192;
+  yIe += yPe;
+  float yDe = yPe - preyPe;
+  preyPe = yPe;
+  return ygain[0] * yPe + ygain[1] * yIe + ygain[2] * yDe;
 }
