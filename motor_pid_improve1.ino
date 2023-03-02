@@ -170,6 +170,13 @@ void loop(void)
   Serial.print(pid3.debug());
   Serial.println("");
   delay(10); //シリアル通信が終わる前に次の通信が始まってしまうのを防ぐ
+
+  int servo = 1; //0or1
+  int syl1 = 0;  //0or1
+  int syl2 = 1;  //0or1
+  char motor = 5; //-15~15
+  
+  msg.buf[0] = servo+syl1*2+syl2*4+(motor>0)*8+abs(motor)>16;
 }
 
 void timerInt() {
