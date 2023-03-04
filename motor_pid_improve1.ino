@@ -245,6 +245,7 @@ void timerInt() {
     }
      }
   if(flag)CANTransmitter.write(msg);
+  CANTransmitter.write(msg1);
 }
 
 int pitchPID(int pitchCommand, int pitchValue) {
